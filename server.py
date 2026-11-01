@@ -191,18 +191,29 @@ def vt_file(h):
 def b64(b):
     return base64.b64encode(b).decode()
 
+PBKDF2_ITER = 600000
+
 def pw_hash(pw):
+    """scrypt, если он есть в Python; иначе PBKDF2-SHA256 (в Python от Apple на macOS scrypt недоступен)."""
     salt = os.urandom(16)
-    h = hashlib.scrypt(pw.encode(), salt=salt, n=2 ** 14, r=8, p=1, maxmem=64 * 1024 * 1024, dklen=32)
-    return 'scrypt$%s$%s' % (b64(salt), b64(h))
+    if hasattr(hashlib, 'scrypt'):
+        h = hashlib.scrypt(pw.encode(), salt=salt, n=2 ** 14, r=8, p=1, maxmem=64 * 1024 * 1024, dklen=32)
+        return 'scrypt$%s$%s' % (b64(salt), b64(h))
+    h = hashlib.pbkdf2_hmac('sha256', pw.encode(), salt, PBKDF2_ITER, dklen=32)
+    return 'pbkdf2$%d$%s$%s' % (PBKDF2_ITER, b64(salt), b64(h))
 
 def pw_check(pw, stored):
     try:
-        _, salt, h = stored.split('$')
-        calc = hashlib.scrypt(pw.encode(), salt=base64.b64decode(salt), n=2 ** 14, r=8, p=1, maxmem=64 * 1024 * 1024, dklen=32)
-        return hmac.compare_digest(calc, base64.b64decode(h))
+        parts = stored.split('$')
+        if parts[0] == 'scrypt' and hasattr(hashlib, 'scrypt'):
+            calc = hashlib.scrypt(pw.encode(), salt=base64.b64decode(parts[1]), n=2 ** 14, r=8, p=1, maxmem=64 * 1024 * 1024, dklen=32)
+            return hmac.compare_digest(calc, base64.b64decode(parts[2]))
+        if parts[0] == 'pbkdf2':
+            calc = hashlib.pbkdf2_hmac('sha256', pw.encode(), base64.b64decode(parts[2]), int(parts[1]), dklen=32)
+            return hmac.compare_digest(calc, base64.b64decode(parts[3]))
     except Exception:
-        return False
+        pass
+    return False
 
 DUMMY = None
 def init_accounts():
@@ -239,6 +250,7 @@ def user_from_token(tok):
     return {'id': r[0], 'email': r[1], 'name': r[2], 'created': r[3]} if r else None
 
 # ---------- HTTP ----------
+VIDEO_TYPES = {'.mp4': 'video/mp4', '.webm': 'video/webm', '.vtt': 'text/vtt; charset=utf-8'}
 PRIVATE = ('/api/auth/', '/api/me', '/api/history', '/api/progress', '/api/export')
 
 class Handler(SimpleHTTPRequestHandler):
@@ -300,6 +312,54 @@ class Handler(SimpleHTTPRequestHandler):
             return False
         return self.headers.get('X-CS') == '1'
 
+    def serve_video(self, p, head=False):
+        """Раздача роликов из public/videos с поддержкой Range (без неё видео не играет в Safari и не перематывается)."""
+        f = (PUBLIC / urllib.parse.unquote(p).lstrip('/')).resolve()
+        if (PUBLIC / 'videos').resolve() not in f.parents or not f.is_file() or f.suffix.lower() not in VIDEO_TYPES:
+            return self.send_error(404)
+        size = f.stat().st_size
+        start, end, code = 0, size - 1, 200
+        m = re.fullmatch(r'bytes=(\d*)-(\d*)', (self.headers.get('Range') or '').strip())
+        if m and (m.group(1) or m.group(2)):
+            if m.group(1):
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else size - 1
+            else:
+                start, end = max(0, size - int(m.group(2))), size - 1
+            if start >= size or start > end:
+                self.send_response(416)
+                self.send_header('Content-Range', 'bytes */%d' % size)
+                self.end_headers()
+                return
+            end, code = min(end, size - 1), 206
+        self.send_response(code)
+        self.send_header('Content-Type', VIDEO_TYPES[f.suffix.lower()])
+        self.send_header('Accept-Ranges', 'bytes')
+        self.send_header('Content-Length', str(end - start + 1))
+        if code == 206:
+            self.send_header('Content-Range', 'bytes %d-%d/%d' % (start, end, size))
+        self.end_headers()
+        if head:
+            return
+        with open(str(f), 'rb') as fh:
+            fh.seek(start)
+            left = end - start + 1
+            while left > 0:
+                chunk = fh.read(min(65536, left))
+                if not chunk:
+                    break
+                try:
+                    self.wfile.write(chunk)
+                except (BrokenPipeError, ConnectionResetError):
+                    break
+                left -= len(chunk)
+
+    def do_HEAD(self):
+        p = urllib.parse.urlparse(self.path).path
+        if p.startswith('/videos/'):
+            return self.serve_video(p, head=True)
+        return super().do_HEAD()
+
     def do_OPTIONS(self):
         p = urllib.parse.urlparse(self.path).path
         if self.is_private(p):
@@ -318,6 +378,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.private_get(p)
         if p.startswith('/api/'):
             return self.reply(404, {'error': 'not_found'})
+        if p.startswith('/videos/'):
+            return self.serve_video(p)
         return super().do_GET()
 
     def do_POST(self):
@@ -492,7 +554,18 @@ class Handler(SimpleHTTPRequestHandler):
                 ac, ck = d.get('academy'), d.get('checkup')
                 if not isinstance(ac, dict) or not isinstance(ck, list) or len(ck) > 20:
                     return R(400, {'error': 'bad_request'})
-                ac = {k: {'score': max(0, min(5, int(v.get('score', 0))))} for k, v in ac.items() if k in LESSON_IDS and isinstance(v, dict) and isinstance(v.get('score', 0), int)}
+                clean = {}
+                for k, val in ac.items():
+                    if k in LESSON_IDS and isinstance(val, dict):
+                        e = {}
+                        sc = val.get('score')
+                        if isinstance(sc, int) and not isinstance(sc, bool):
+                            e['score'] = max(0, min(5, sc))
+                        vv = val.get('v')
+                        if isinstance(vv, list):
+                            e['v'] = sorted({n for n in vv if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 3})
+                        clean[k] = e
+                ac = clean
                 ck = [x for x in ck if isinstance(x, str) and re.fullmatch(r'chk\d{1,2}', x)]
                 c.execute('INSERT INTO progress(uid,data) VALUES(?,?) ON CONFLICT(uid) DO UPDATE SET data=excluded.data', (u['id'], json.dumps({'academy': ac, 'checkup': ck})))
                 c.commit()
