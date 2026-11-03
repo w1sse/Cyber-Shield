@@ -60,16 +60,16 @@ if(back){const upd=()=>{back.hidden=window.scrollY<300};upd();addEventListener('
 document.querySelectorAll('.side a[href^="#"]').forEach(a=>a.addEventListener('click',()=>document.querySelectorAll('.side a').forEach(v=>v.classList.toggle('on',v===a))));
 
 /* ---- вкладки проверки ---- */
-let setTab=null,curTab='site';
+let setTab=null,curTab='link';
 const tabs=document.querySelectorAll('[data-tab]');
 if(tabs.length){
-  const PANELS={site:'urlPanel',link:'urlPanel',sms:'smsPanel',phone:'phonePanel',qr:'qrPanel',file:'filePanel',password:'passwordPanel'},inp=$('urlInput');
-  const cfg={site:['Проверьте веб-сайт','Введите адрес сайта, который хотите проверить.','Например: https://example.com'],link:['Проверьте ссылку','Вставьте ссылку из сообщения. Открывать её не нужно.','Например: https://example.com/login']};
+  const PANELS={link:'urlPanel',sms:'smsPanel',phone:'phonePanel',qr:'qrPanel',file:'filePanel',password:'passwordPanel'},inp=$('urlInput');
+  const cfg={link:['Проверьте ссылку','Вставьте ссылку из сообщения. Открывать её не нужно.','Например: https://example.com/login']};
   setTab=k=>{curTab=k;tabs.forEach(t=>{const on=t.dataset.tab===k;t.classList.toggle('active',on);t.setAttribute('aria-pressed',on)});
     [...new Set(Object.values(PANELS))].forEach(id=>{const p=$(id);if(p)p.hidden=id!==PANELS[k]});
-    {const cc=cfg[k]||cfg.site,up=$('urlPanel');up.querySelector('h2').textContent=tr(cc[0]);up.querySelector('.muted').textContent=tr(cc[1]);inp.placeholder=tr(cc[2])}};
+    {const cc=cfg[k]||cfg.link,up=$('urlPanel');up.querySelector('h2').textContent=tr(cc[0]);up.querySelector('.muted').textContent=tr(cc[1]);inp.placeholder=tr(cc[2])}};
   tabs.forEach(t=>t.addEventListener('click',()=>setTab(t.dataset.tab)));
-  const hv=location.hash.slice(1);if(['site','link','sms','phone','qr','file','password'].includes(hv))curTab=hv;
+  const hv=location.hash.slice(1);if(['link','sms','phone','qr','file','password'].includes(hv))curTab=hv;else if(hv==='site')curTab='link';
 }
 
 /* ---- общие помощники результата ---- */
