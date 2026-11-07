@@ -1,4 +1,4 @@
-/* Cyber-Shield: компактный декодер QR-кодов (версии 1-10, режимы: цифры, буквы, байты).
+/* Cyber-Shield: компактный декодер QR-кодов (версии 1-40, режимы: цифры, буквы, байты, кандзи).
    Без сторонних библиотек. Использование: CSQR.decode(imageData) -> строка или null. */
 (function(g){"use strict";
 /* ---------- GF(256) и Рид-Соломон ---------- */
@@ -27,9 +27,10 @@ function rsCorrect(cw,ec){
     if(!dl)return null;out[n-1-k]^=mul(X,mul(om,inv(dl)))}
   for(let i=0;i<ec;i++){let s=0;for(let j=0;j<n;j++)s=mul(s,EXP[i])^out[j];if(s)return null}
   return out}
-/* ---------- таблицы версий 1-10: по уровням L,M,Q,H: [EC на блок, блоков1, данных1, блоков2, данных2] ---------- */
-const BLK={1:[[7,1,19],[10,1,16],[13,1,13],[17,1,9]],2:[[10,1,34],[16,1,28],[22,1,22],[28,1,16]],3:[[15,1,55],[26,1,44],[18,2,17],[22,2,13]],4:[[20,1,80],[18,2,32],[26,2,24],[16,4,9]],5:[[26,1,108],[24,2,43],[18,2,15,2,16],[22,2,11,2,12]],6:[[18,2,68],[16,4,27],[24,4,19],[28,4,15]],7:[[20,2,78],[18,4,31],[18,2,14,4,15],[26,4,13,1,14]],8:[[24,2,97],[22,2,38,2,39],[22,4,18,2,19],[26,4,14,2,15]],9:[[30,2,116],[22,3,36,2,37],[20,4,16,4,17],[24,4,12,4,13]],10:[[18,2,68,2,69],[26,4,43,1,44],[24,6,19,2,20],[28,6,15,2,16]]};
-const ALIGN={2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],7:[6,22,38],8:[6,24,42],9:[6,26,46],10:[6,28,50]};
+/* ---------- таблицы версий 1-40: по уровням L,M,Q,H: [EC на блок, блоков1, данных1, блоков2, данных2] ---------- */
+const BLK={1:[[7,1,19],[10,1,16],[13,1,13],[17,1,9]],2:[[10,1,34],[16,1,28],[22,1,22],[28,1,16]],3:[[15,1,55],[26,1,44],[18,2,17],[22,2,13]],4:[[20,1,80],[18,2,32],[26,2,24],[16,4,9]],5:[[26,1,108],[24,2,43],[18,2,15,2,16],[22,2,11,2,12]],6:[[18,2,68],[16,4,27],[24,4,19],[28,4,15]],7:[[20,2,78],[18,4,31],[18,2,14,4,15],[26,4,13,1,14]],8:[[24,2,97],[22,2,38,2,39],[22,4,18,2,19],[26,4,14,2,15]],9:[[30,2,116],[22,3,36,2,37],[20,4,16,4,17],[24,4,12,4,13]],10:[[18,2,68,2,69],[26,4,43,1,44],[24,6,19,2,20],[28,6,15,2,16]],11:[[20,4,81],[30,1,50,4,51],[28,4,22,4,23],[24,3,12,8,13]],12:[[24,2,92,2,93],[22,6,36,2,37],[26,4,20,6,21],[28,7,14,4,15]],13:[[26,4,107],[22,8,37,1,38],[24,8,20,4,21],[22,12,11,4,12]],14:[[30,3,115,1,116],[24,4,40,5,41],[20,11,16,5,17],[24,11,12,5,13]],15:[[22,5,87,1,88],[24,5,41,5,42],[30,5,24,7,25],[24,11,12,7,13]],16:[[24,5,98,1,99],[28,7,45,3,46],[24,15,19,2,20],[30,3,15,13,16]],17:[[28,1,107,5,108],[28,10,46,1,47],[28,1,22,15,23],[28,2,14,17,15]],18:[[30,5,120,1,121],[26,9,43,4,44],[28,17,22,1,23],[28,2,14,19,15]],19:[[28,3,113,4,114],[26,3,44,11,45],[26,17,21,4,22],[26,9,13,16,14]],20:[[28,3,107,5,108],[26,3,41,13,42],[30,15,24,5,25],[28,15,15,10,16]],21:[[28,4,116,4,117],[26,17,42],[28,17,22,6,23],[30,19,16,6,17]],22:[[28,2,111,7,112],[28,17,46],[30,7,24,16,25],[24,34,13]],23:[[30,4,121,5,122],[28,4,47,14,48],[30,11,24,14,25],[30,16,15,14,16]],24:[[30,6,117,4,118],[28,6,45,14,46],[30,11,24,16,25],[30,30,16,2,17]],25:[[26,8,106,4,107],[28,8,47,13,48],[30,7,24,22,25],[30,22,15,13,16]],26:[[28,10,114,2,115],[28,19,46,4,47],[28,28,22,6,23],[30,33,16,4,17]],27:[[30,8,122,4,123],[28,22,45,3,46],[30,8,23,26,24],[30,12,15,28,16]],28:[[30,3,117,10,118],[28,3,45,23,46],[30,4,24,31,25],[30,11,15,31,16]],29:[[30,7,116,7,117],[28,21,45,7,46],[30,1,23,37,24],[30,19,15,26,16]],30:[[30,5,115,10,116],[28,19,47,10,48],[30,15,24,25,25],[30,23,15,25,16]],31:[[30,13,115,3,116],[28,2,46,29,47],[30,42,24,1,25],[30,23,15,28,16]],32:[[30,17,115],[28,10,46,23,47],[30,10,24,35,25],[30,19,15,35,16]],33:[[30,17,115,1,116],[28,14,46,21,47],[30,29,24,19,25],[30,11,15,46,16]],34:[[30,13,115,6,116],[28,14,46,23,47],[30,44,24,7,25],[30,59,16,1,17]],35:[[30,12,121,7,122],[28,12,47,26,48],[30,39,24,14,25],[30,22,15,41,16]],36:[[30,6,121,14,122],[28,6,47,34,48],[30,46,24,10,25],[30,2,15,64,16]],37:[[30,17,122,4,123],[28,29,46,14,47],[30,49,24,10,25],[30,24,15,46,16]],38:[[30,4,122,18,123],[28,13,46,32,47],[30,48,24,14,25],[30,42,15,32,16]],39:[[30,20,117,4,118],[28,40,47,7,48],[30,43,24,22,25],[30,10,15,67,16]],40:[[30,19,118,6,119],[28,18,47,31,48],[30,34,24,34,25],[30,20,15,61,16]]};
+/* позиции выравнивающих узоров для версий 2-40 (формула стандарта; у версии 32 шаг 26) */
+function alignPos(ver){if(ver<2)return[];const n=Math.floor(ver/7)+2,last=ver*4+10,step=ver===32?26:Math.ceil((last-6)/(n-1)/2)*2,a=[6];for(let i=n-2;i>=0;i--)a.push(last-step*i);return a}
 const ECIDX=[1,0,3,2],ALNUM="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
 const MASKS=[(y,x)=>(y+x)%2===0,(y,x)=>y%2===0,(y,x)=>x%3===0,(y,x)=>(y+x)%3===0,(y,x)=>(((y>>1)+Math.floor(x/3))%2)===0,(y,x)=>((y*x)%2+(y*x)%3)===0,(y,x)=>(((y*x)%2+(y*x)%3)%2)===0,(y,x)=>((((y+x)%2)+((y*x)%3))%2)===0];
 /* ---------- формат ---------- */
@@ -48,13 +49,13 @@ function funcMap(dim,ver){
   for(let y=0;y<9;y++)for(let x=dim-8;x<dim;x++)set(x,y);
   for(let y=dim-8;y<dim;y++)for(let x=0;x<9;x++)set(x,y);
   for(let i=0;i<dim;i++){set(i,6);set(6,i)}
-  if(ver>=2){const p=ALIGN[ver];for(const cy of p)for(const cx of p){if((cx===6&&cy===6)||(cx===6&&cy===p[p.length-1])||(cy===6&&cx===p[p.length-1]))continue;
+  if(ver>=2){const p=alignPos(ver);for(const cy of p)for(const cx of p){if((cx===6&&cy===6)||(cx===6&&cy===p[p.length-1])||(cy===6&&cx===p[p.length-1]))continue;
     for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)set(cx+dx,cy+dy)}}
   if(ver>=7){for(let i=0;i<6;i++)for(let j=0;j<3;j++){set(dim-11+j,i);set(i,dim-11+j)}}
   return F}
 /* ---------- разбор матрицы ---------- */
 function decodeMatrix(M,dim){
-  const ver=(dim-17)/4;if(ver<1||ver>10||(dim-17)%4)return null;
+  const ver=(dim-17)/4;if(ver<1||ver>40||(dim-17)%4)return null;
   const fi=readFormat(M,dim);if(!fi)return null;
   const F=funcMap(dim,ver),mk=MASKS[fi.mask],bytes=[];let cur=0,nb=0,up=true;
   for(let j=dim-1;j>0;j-=2){if(j===6)j--;
@@ -72,24 +73,29 @@ function decodeMatrix(M,dim){
   return parseBits(data,ver)}
 function parseBits(data,ver){
   let pos=0;const total=data.length*8,rd=n=>{let v=0;for(let i=0;i<n;i++){if(pos>=total)return -1;v=(v<<1)|((data[pos>>3]>>(7-(pos&7)))&1);pos++}return v};
-  const big=ver>=10,out=[];let text="",utf=[];
+  const lv=ver>=27?2:ver>=10?1:0,cb=(a,b,c)=>[a,b,c][lv],out=[];let text="",utf=[];
   const flush=()=>{if(utf.length){try{text+=new TextDecoder("utf-8",{fatal:true}).decode(new Uint8Array(utf))}catch(e){text+=String.fromCharCode(...utf)}utf=[]}};
   for(;;){const mode=rd(4);if(mode<=0)break;
-    if(mode===4){const n=rd(big?16:8);if(n<0)return null;for(let i=0;i<n;i++){const c=rd(8);if(c<0)return null;utf.push(c)}}
-    else if(mode===2){flush();let n=rd(big?11:9);if(n<0)return null;while(n>1){const v=rd(11);if(v<0)return null;text+=ALNUM[Math.floor(v/45)]+ALNUM[v%45];n-=2}if(n===1){const v=rd(6);if(v<0)return null;text+=ALNUM[v]}}
-    else if(mode===1){flush();let n=rd(big?12:10);if(n<0)return null;while(n>=3){const v=rd(10);if(v<0)return null;text+=String(v).padStart(3,"0");n-=3}if(n===2){const v=rd(7);if(v<0)return null;text+=String(v).padStart(2,"0")}else if(n===1){const v=rd(4);if(v<0)return null;text+=String(v)}}
-    else if(mode===7){const v=rd(8);if(v<0)return null;if(v&128){rd(8)}if((v&192)===192)rd(8)}
+    if(mode===4){const n=rd(cb(8,16,16));if(n<0)return null;for(let i=0;i<n;i++){const c=rd(8);if(c<0)return null;utf.push(c)}}
+    else if(mode===2){flush();let n=rd(cb(9,11,13));if(n<0)return null;while(n>1){const v=rd(11);if(v<0||v>=2025)return null;text+=ALNUM[Math.floor(v/45)]+ALNUM[v%45];n-=2}if(n===1){const v=rd(6);if(v<0||v>=45)return null;text+=ALNUM[v]}}
+    else if(mode===1){flush();let n=rd(cb(10,12,14));if(n<0)return null;while(n>=3){const v=rd(10);if(v<0||v>999)return null;text+=String(v).padStart(3,"0");n-=3}if(n===2){const v=rd(7);if(v<0||v>99)return null;text+=String(v).padStart(2,"0")}else if(n===1){const v=rd(4);if(v<0||v>9)return null;text+=String(v)}}
+    else if(mode===8){flush();const n=rd(cb(8,10,12));if(n<0)return null;const kb=[];for(let i=0;i<n;i++){let v=rd(13);if(v<0)return null;v=(Math.floor(v/192)<<8)|(v%192);v+=v<0x1F00?0x8140:0xC140;kb.push(v>>8,v&255)}
+      try{text+=new TextDecoder("shift_jis").decode(new Uint8Array(kb))}catch(e){return null}}
+    else if(mode===7){const v=rd(8);if(v<0)return null;if((v&192)===128)rd(8);else if((v&224)===192)rd(16)}
+    else if(mode===3){if(rd(16)<0)return null}
+    else if(mode===5){}
+    else if(mode===9){if(rd(8)<0)return null}
     else return null}
   flush();return text||null}
 /* ---------- поиск QR на изображении ---------- */
-function binarize(gray,w,h){
-  const s=Math.max(15,Math.round(w/8))|1,half=s>>1,I=new Float64Array((w+1)*(h+1));
+function binarize(gray,w,h,k,dv){
+  const s=Math.max(15,Math.round(w/(dv||8)))|1,half=s>>1,I=new Float64Array((w+1)*(h+1));
   for(let y=0;y<h;y++){let row=0;for(let x=0;x<w;x++){row+=gray[y*w+x];I[(y+1)*(w+1)+x+1]=I[y*(w+1)+x+1]+row}}
   const B=new Uint8Array(w*h);
   for(let y=0;y<h;y++){const y0=Math.max(0,y-half),y1=Math.min(h,y+half+1);
     for(let x=0;x<w;x++){const x0=Math.max(0,x-half),x1=Math.min(w,x+half+1),n=(x1-x0)*(y1-y0);
       const sum=I[y1*(w+1)+x1]-I[y0*(w+1)+x1]-I[y1*(w+1)+x0]+I[y0*(w+1)+x0];
-      B[y*w+x]=gray[y*w+x]*n<sum*0.93?1:0}}
+      B[y*w+x]=gray[y*w+x]*n<sum*(k||0.93)?1:0}}
   return B}
 function runsDir(B,w,h,x,y,dx,dy,sg){const o=[0,0,0];let st=0;
   for(let i=0;;i++){const xx=x+dx*sg*i,yy=y+dy*sg*i;if(xx<0||yy<0||xx>=w||yy>=h)break;const v=B[yy*w+xx],want=st===1?0:1;
@@ -128,37 +134,90 @@ function homography(src,dst){const A=[];
   const H=A.map((r,i)=>r[8]/r[i]);return H}
 const proj=(H,x,y)=>{const d=H[6]*x+H[7]*y+1;return[(H[0]*x+H[1]*y+H[2])/d,(H[3]*x+H[4]*y+H[5])/d]};
 function alignOk(r){const m=(r[1]+r[2]+r[3])/3,t=m*0.6;return m>=1&&Math.abs(r[1]-m)<t&&Math.abs(r[2]-m)<t&&Math.abs(r[3]-m)<t&&r[0]>=m*0.5&&r[4]>=m*0.5}
-function findAlign(B,w,h,ex,ey,m){const R=Math.ceil(m*5);let best=null,bd=1e9;
-  for(let y=Math.max(0,Math.round(ey-R));y<=Math.min(h-1,Math.round(ey+R));y++)for(let x=Math.max(0,Math.round(ex-R));x<=Math.min(w-1,Math.round(ex+R));x++){
+function findAlignAll(B,w,h,ex,ey,m,rm){const R=Math.ceil(m*(rm||5)),hits=[];
+  const st=Math.max(1,Math.round(m/4));
+  for(let y=Math.max(0,Math.round(ey-R));y<=Math.min(h-1,Math.round(ey+R));y+=st)for(let x=Math.max(0,Math.round(ex-R));x<=Math.min(w-1,Math.round(ex+R));x+=st){
     if(!B[y*w+x])continue;const a=lineRuns(B,w,h,x,y,1,0),b=lineRuns(B,w,h,x,y,0,1);
     if(!a||!b||!alignOk(a.r)||!alignOk(b.r))continue;
-    const cx=x+a.off,cy=y+b.off,d=Math.hypot(cx-ex,cy-ey);if(d<bd){bd=d;best=[cx,cy]}}
-  return best&&bd<R?best:null}
-function sample(B,w,h,t){
+    const cx=x+a.off,cy=y+b.off,d=Math.hypot(cx-ex,cy-ey);if(d<R)hits.push([cx,cy,d])}
+  hits.sort((p,q)=>p[2]-q[2]);const out=[];
+  for(const p of hits)if(!out.some(q=>Math.hypot(p[0]-q[0],p[1]-q[1])<m*1.5)){out.push([p[0],p[1]]);if(out.length>=4)break}
+  return out}
+const findAlign=(B,w,h,ex,ey,m,rm)=>findAlignAll(B,w,h,ex,ey,m,rm)[0]||null;
+/* метод наименьших квадратов для гомографии (нужен, чтобы использовать все найденные опорные точки, а не ровно четыре) */
+function homographyLS(src,dst,ss,sd){
+  const A=Array.from({length:8},()=>new Array(9).fill(0));
+  const acc=(r,v)=>{for(let i=0;i<8;i++){for(let j=0;j<8;j++)A[i][j]+=r[i]*r[j];A[i][8]+=r[i]*v}};
+  for(let i=0;i<src.length;i++){const x=src[i][0]/ss,y=src[i][1]/ss,u=dst[i][0]/sd,v=dst[i][1]/sd;
+    acc([x,y,1,0,0,0,-u*x,-u*y],u);acc([0,0,0,x,y,1,-v*x,-v*y],v)}
+  for(let c=0;c<8;c++){let p=c;for(let r=c+1;r<8;r++)if(Math.abs(A[r][c])>Math.abs(A[p][c]))p=r;if(Math.abs(A[p][c])<1e-12)return null;[A[c],A[p]]=[A[p],A[c]];
+    for(let r=0;r<8;r++){if(r===c)continue;const f=A[r][c]/A[c][c];for(let k=c;k<9;k++)A[r][k]-=f*A[c][k]}}
+  const q=A.map((r,i)=>r[8]/r[i]),k=sd/ss;
+  return[q[0]*k,q[1]*k,q[2]*sd,q[3]*k,q[4]*k,q[5]*sd,q[6]/ss,q[7]/ss]}
+/* доля «известных» модулей (угловые узоры, линии синхронизации, выравнивающие узоры), совпавших с эталоном: так выбираем лучшую сетку */
+function fscore(M,dim,ver){let ok=0,n=0;const t=(x,y,v)=>{n++;if(M[y*dim+x]===v)ok++};
+  for(let i=8;i<dim-8;i++){const v=i%2===0?1:0;t(i,6,v);t(6,i,v)}
+  for(const [ox,oy] of [[0,0],[dim-7,0],[0,dim-7]])for(let y=0;y<7;y++)for(let x=0;x<7;x++){const d=Math.max(Math.abs(x-3),Math.abs(y-3));t(ox+x,oy+y,d===2?0:1)}
+  if(ver>=2){const P=alignPos(ver),last=P[P.length-1];
+    for(const cy of P)for(const cx of P){if((cx===6&&cy===6)||(cx===6&&cy===last)||(cy===6&&cx===last))continue;
+      for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)t(cx+dx,cy+dy,Math.max(Math.abs(dx),Math.abs(dy))===1?0:1)}}
+  return ok/n}
+function sample(B,w,h,t,dd){
   const {tl,tr,bl}=t,m=(tl.m+tr.m+bl.m)/3,dt=Math.hypot(tr.x-tl.x,tr.y-tl.y),db=Math.hypot(bl.x-tl.x,bl.y-tl.y);
-  let est=(dt+db)/2/m+7,dim=21+4*Math.round((est-21)/4);if(dim<21||dim>57)return null;
-  const ver=(dim-17)/4,u=dim-7,vx=[(tr.x-tl.x)/u,(tr.y-tl.y)/u],vy=[(bl.x-tl.x)/u,(bl.y-tl.y)/u];
+  let est=(dt+db)/2/m+7,dim=21+4*Math.round((est-21)/4)+(dd||0);if(dim<21||dim>177)return null;
+  const ver=(dim-17)/4,u=dim-7,vx=[(tr.x-tl.x)/u,(tr.y-tl.y)/u],vy=[(bl.x-tl.x)/u,(bl.y-tl.y)/u],mpx=(Math.hypot(vx[0],vx[1])+Math.hypot(vy[0],vy[1]))/2;
   const mp=(x,y)=>[tl.x+(x-3.5)*vx[0]+(y-3.5)*vy[0],tl.y+(x-3.5)*vx[1]+(y-3.5)*vy[1]];
-  let br=mp(dim-6.5,dim-6.5),src=[[3.5,3.5],[dim-3.5,3.5],[3.5,dim-3.5]],dst=[[tl.x,tl.y],[tr.x,tr.y],[bl.x,bl.y]];
-  if(ver>=2){const a=findAlign(B,w,h,br[0],br[1],dt/u);if(a)br=a;src.push([dim-6.5,dim-6.5]);dst.push(br)}
-  else{src.push([dim-3.5,dim-3.5]);dst.push(mp(dim-3.5,dim-3.5))}
-  const H=homography(src,dst);if(!H)return null;
-  const M=new Uint8Array(dim*dim),o=0.22;
-  for(let y=0;y<dim;y++)for(let x=0;x<dim;x++){let s=0;
-    for(const [dx,dy] of [[0,0],[-o,0],[o,0],[0,-o],[0,o]]){const [px,py]=proj(H,x+0.5+dx,y+0.5+dy),ix=Math.round(px),iy=Math.round(py);
-      if(ix>=0&&iy>=0&&ix<w&&iy<h)s+=B[iy*w+ix]}
-    M[y*dim+x]=s>=3?1:0}
-  return{M,dim}}
-function tryBinary(B,w,h){
-  for(const t of triples(findFinders(B,w,h))){const s=sample(B,w,h,t);if(!s)continue;
-    let r=decodeMatrix(s.M,s.dim);if(r)return r;
-    const T=new Uint8Array(s.M.length);for(let y=0;y<s.dim;y++)for(let x=0;x<s.dim;x++)T[x*s.dim+y]=s.M[y*s.dim+x];
-    r=decodeMatrix(T,s.dim);if(r)return r}
+  const guess=mp(dim-6.5,dim-6.5),tried=[];let best=null;
+  const attempt=a=>{
+    const src=[[3.5,3.5],[dim-3.5,3.5],[3.5,dim-3.5],ver>=2?[dim-6.5,dim-6.5]:[dim-3.5,dim-3.5]],dst=[[tl.x,tl.y],[tr.x,tr.y],[bl.x,bl.y],a];
+    let H=homography(src,dst);if(!H)return;
+    /* у крупных кодов уточняем сетку по всем выравнивающим узорам: перекос и изгиб не сбивают отсчёт модулей */
+    if(ver>=4){const P=alignPos(ver),last=P[P.length-1];
+      for(let pass=0;pass<2;pass++){const S=src.slice(),D=dst.slice();
+        for(const cy of P)for(const cx of P){if((cx===6&&cy===6)||(cx===6&&cy===last)||(cy===6&&cx===last)||(cx===last&&cy===last))continue;
+          const [px,py]=proj(H,cx+0.5,cy+0.5),f=findAlign(B,w,h,px,py,mpx,2.5);if(f){S.push([cx+0.5,cy+0.5]);D.push(f)}}
+        if(S.length<6)break;
+        let H2=homographyLS(S,D,dim,Math.max(w,h));if(!H2)break;
+        const S2=[],D2=[];for(let i=0;i<S.length;i++){const [px,py]=proj(H2,S[i][0],S[i][1]);if(Math.hypot(px-D[i][0],py-D[i][1])<mpx*1.2){S2.push(S[i]);D2.push(D[i])}}
+        if(S2.length>=6&&S2.length<S.length){const H3=homographyLS(S2,D2,dim,Math.max(w,h));if(H3)H2=H3}
+        H=H2}}
+    const M=new Uint8Array(dim*dim),o=0.22;
+    for(let y=0;y<dim;y++)for(let x=0;x<dim;x++){let c=0;
+      for(const [dx,dy] of [[0,0],[-o,0],[o,0],[0,-o],[0,o]]){const [px,py]=proj(H,x+0.5+dx,y+0.5+dy),ix=Math.round(px),iy=Math.round(py);
+        if(ix>=0&&iy>=0&&ix<w&&iy<h)c+=B[iy*w+ix]}
+      M[y*dim+x]=c>=3?1:0}
+    const sc=fscore(M,dim,ver);if(!best||sc>best.score)best={M,dim,score:sc}};
+  if(ver<2){attempt(mp(dim-3.5,dim-3.5));return best}
+  /* нижний правый выравнивающий узор: сначала ищем близко, расширяем поиск только если сетка не сошлась с эталоном (перекос уводит узор далеко от прямой оценки) */
+  for(const rms of [[5],[9,14]]){
+    for(const rm of rms)for(const a of findAlignAll(B,w,h,guess[0],guess[1],mpx,rm)){
+      if(tried.some(b=>Math.hypot(a[0]-b[0],a[1]-b[1])<mpx*1.5)||tried.length>=5)continue;tried.push(a);attempt(a);if(best&&best.score>0.985)return best}
+    if(best&&best.score>0.9)return best}
+  attempt(guess);
+  return best}
+function tryBinary(B,w,h,lim){
+  for(const t of triples(findFinders(B,w,h)).slice(0,lim||4)){
+    /* размер кода оцениваем по расстоянию между угловыми узорами; если оценка промахнулась на шаг, пробуем соседние версии */
+    for(const dd of [0,4,-4,8,-8]){const s=sample(B,w,h,t,dd);if(!s)continue;
+      let r=decodeMatrix(s.M,s.dim);if(r)return r;
+      const T=new Uint8Array(s.M.length);for(let y=0;y<s.dim;y++)for(let x=0;x<s.dim;x++)T[x*s.dim+y]=s.M[y*s.dim+x];
+      r=decodeMatrix(T,s.dim);if(r)return r;
+      if(dd===0&&(s.dim<=57||s.score>0.88))break}}
   return null}
-function decode(img){
+/* размытие по окну: гасит шум камеры перед бинаризацией */
+function boxBlur(g,w,h,r){const o=new Uint8Array(g.length),t=new Float32Array(g.length),n=2*r+1;
+  for(let y=0;y<h;y++){let s=0;for(let x=-r;x<=r;x++)s+=g[y*w+Math.min(w-1,Math.max(0,x))];for(let x=0;x<w;x++){t[y*w+x]=s;s+=g[y*w+Math.min(w-1,x+r+1)]-g[y*w+Math.max(0,x-r)]}}
+  for(let x=0;x<w;x++){let s=0;for(let y=-r;y<=r;y++)s+=t[Math.min(h-1,Math.max(0,y))*w+x];for(let y=0;y<h;y++){o[y*w+x]=Math.round(s/(n*n));s+=t[Math.min(h-1,y+r+1)*w+x]-t[Math.max(0,y-r)*w+x]}}
+  return o}
+function decode(img,opt){
   const w=img.width,h=img.height,d=img.data,gray=new Uint8Array(w*h);
   for(let i=0,j=0;i<gray.length;i++,j+=4)gray[i]=(d[j]*77+d[j+1]*150+d[j+2]*29)>>8;
-  let B=binarize(gray,w,h),r=tryBinary(B,w,h);if(r)return r;
-  for(let i=0;i<B.length;i++)B[i]^=1;return tryBinary(B,w,h)}
+  /* быстрый режим (кадры камеры): один-два прохода; полный режим (загруженная картинка): несколько вариантов обработки */
+  const plan=opt&&opt.fast?[[0,0.93,8],[1,0.93,8]]:[[0,0.93,8],[1,0.93,8],[0,0.88,16],[2,0.95,8],[1,0.9,4],[0,0.97,16]];
+  const lim=opt&&opt.fast?2:4;
+  for(const [bl,k,dv] of plan){
+    const g=bl?boxBlur(gray,w,h,bl):gray,B=binarize(g,w,h,k,dv);let r=tryBinary(B,w,h,lim);if(r)return r;
+    for(let i=0;i<B.length;i++)B[i]^=1;r=tryBinary(B,w,h,lim);if(r)return r}
+  return null}
 g.CSQR={decode,_rs:rsCorrect,_blk:BLK};
 })(typeof self!=="undefined"?self:globalThis);

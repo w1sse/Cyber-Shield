@@ -46,6 +46,7 @@ LESSON_IDS = {'phishing', 'social', 'accounts', 'twofa', 'data'}
 _lock = threading.Lock()
 _hits = {}
 _cache = {}
+_vt_pending = {}  # адрес -> (id анализа, время отправки): повторные запросы не отправляют адрес в VirusTotal заново
 
 def allow(key, limit, window=60):
     now = time.time()
@@ -96,27 +97,65 @@ def sb_check(url):
         return {'status': 'threat', 'types': sorted({x.get('threatType', '') for x in m})}
     return {'status': 'clean'}
 
+def _vt_stats(st):
+    total = sum(st.get(k, 0) for k in ('harmless', 'malicious', 'suspicious', 'undetected'))
+    flagged = st.get('malicious', 0) + st.get('suspicious', 0)
+    if total == 0:
+        return {'status': 'queued'}
+    return {'status': 'threat' if flagged else 'clean', 'flagged': flagged, 'total': total}
+
 def vt_check(url):
     if not VT_KEY:
         return {'status': 'off'}
     uid = base64.urlsafe_b64encode(url.encode()).decode().strip('=')
     hdr = {'x-apikey': VT_KEY}
     try:
+        pend = _vt_pending.get(url)
+        if pend and time.time() - pend[1] < 600:
+            # анализ уже идёт: спрашиваем только его состояние (1 запрос)
+            _, d = http_json('%s/analyses/%s' % (VT_URL, pend[0]), headers=hdr)
+            a = d.get('data', {}).get('attributes', {})
+            if a.get('status') == 'completed':
+                res = _vt_stats(a.get('stats', {}))
+                if res['status'] != 'queued':
+                    _vt_pending.pop(url, None)
+                    return res
+            return {'status': 'queued'}
         try:
             _, d = http_json('%s/urls/%s' % (VT_URL, uid), headers=hdr)
+            res = _vt_stats(d.get('data', {}).get('attributes', {}).get('last_analysis_stats', {}))
+            if res['status'] != 'queued':
+                return res
+            aid = None  # запись есть, но анализ ещё не завершён
         except urllib.error.HTTPError as e:
             if e.code != 404:
                 raise
-            # адрес ещё не анализировался: отправляем на анализ, результат будет при повторной проверке
-            http_json(VT_URL + '/urls', ('url=' + urllib.parse.quote(url, safe='')).encode(),
-                      dict(hdr, **{'Content-Type': 'application/x-www-form-urlencoded'}), 'POST')
-            return {'status': 'queued'}
-        st = d.get('data', {}).get('attributes', {}).get('last_analysis_stats', {})
-        total = sum(st.get(k, 0) for k in ('harmless', 'malicious', 'suspicious', 'undetected'))
-        flagged = st.get('malicious', 0) + st.get('suspicious', 0)
-        if total == 0:
-            return {'status': 'queued'}
-        return {'status': 'threat' if flagged else 'clean', 'flagged': flagged, 'total': total}
+            # адрес ещё не анализировался: отправляем на анализ
+            _, d = http_json(VT_URL + '/urls', ('url=' + urllib.parse.quote(url, safe='')).encode(),
+                             dict(hdr, **{'Content-Type': 'application/x-www-form-urlencoded'}), 'POST')
+            aid = d.get('data', {}).get('id')
+            if aid:
+                _vt_pending[url] = (aid, time.time())
+        # ждём результат здесь, чтобы человеку не пришлось повторять проверку (2 запроса, чтобы не упереться в лимит бесплатного ключа VirusTotal)
+        for _ in range(2):
+            time.sleep(6)
+            if aid:
+                _, d = http_json('%s/analyses/%s' % (VT_URL, aid), headers=hdr)
+                a = d.get('data', {}).get('attributes', {})
+                if a.get('status') == 'completed':
+                    res = _vt_stats(a.get('stats', {}))
+                    if res['status'] != 'queued':
+                        _vt_pending.pop(url, None)
+                        return res
+            else:
+                _, d = http_json('%s/urls/%s' % (VT_URL, uid), headers=hdr)
+                res = _vt_stats(d.get('data', {}).get('attributes', {}).get('last_analysis_stats', {}))
+                if res['status'] != 'queued':
+                    return res
+        return {'status': 'queued'}
+    except urllib.error.HTTPError as e:
+        print('[virustotal] ошибка:', type(e).__name__, e.code)
+        return {'status': 'error', 'code': e.code}
     except Exception as e:
         print('[virustotal] ошибка:', type(e).__name__)
         return {'status': 'error'}
@@ -127,7 +166,7 @@ def check_url(url):
     if hit and now - hit[0] < 600:
         return hit[1]
     res = {'safebrowsing': sb_check(url), 'virustotal': vt_check(url)}
-    if all(v.get('status') != 'error' for v in res.values()):
+    if all(v.get('status') not in ('error', 'queued') for v in res.values()):
         _cache[url] = (now, res)
         if len(_cache) > 500:
             _cache.pop(next(iter(_cache)))
